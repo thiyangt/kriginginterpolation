@@ -95,6 +95,17 @@ ggplot(meuse, aes(x=dist, y=log(zinc))) + geom_point()
 ggplot(meuse, aes(x=sqrt(dist), y=log(zinc))) + geom_point()
 ```
 
+```{r, warning=FALSE, message=FALSE}
+library(GGally)
+ggpairs(meuse)
+```
+
+```{r}
+ggpairs(meuse[,3:9])
+
+
+```
+
 ### Simple Linear Regression Model
 
 ```{r}
@@ -233,3 +244,112 @@ ggplot() + geom_sf(data = kpred, aes(color = var1.var)) +
   geom_sf(data = meuse2) +
   scale_color_viridis(name = "variance") + theme_bw()
 ```
+
+## Detecting Anisotropy
+
+```{r}
+vg.dir <- variogram(log(zinc)~1, alpha = c(0, 45, 90, 135), meuse2)
+plot(vg.dir)
+```
+
+## Fit Anisotropic Variogram Models
+
+The function call vgm(psill=0.59, model = "Sph", range = 1200, nugget = 0.05, anis = c(45, 0.4)) in R creates a variogram model using the vgm() function from the gstat package. Here's what each parameter means:
+
+- psill = 0.59: This is the partial sill, representing the difference between the sill (total variance) and the nugget effect. It defines the maximum semivariance minus the nugget.
+
+- model = "Sph": The model type is Spherical, one of the commonly used variogram models. It describes how spatial correlation decreases with distance.
+
+- range = 1200: This is the range, the distance at which the spatial correlation drops to near zero (or 95% of the sill for the spherical model). Beyond this distance, observations are considered uncorrelated.
+
+- nugget = 0.05: The nugget effect, representing spatial variability at very small scales or measurement errors. It accounts for discontinuity at very short distances.
+
+- anis = c(45, 0.4): Specifies anisotropy, meaning the spatial correlation differs by direction.
+
+- 45 indicates the direction (angle in degrees from the x-axis) where the correlation is strongest.
+
+- 0.4 is the anisotropy ratio, meaning correlation decays faster in the perpendicular direction. A value of 0.4 means that in the perpendicular direction, the range is only 40% of the main direction's range.
+
+```{r}
+fit.ani <- vgm(psill=0.59, model = "Sph", range = 1200, nugget = 0.05, anis = c(45, 0.4))
+plot(vg.dir, fit.ani)
+```
+
+This variogram model describes spatial dependence using a spherical variogram with anisotropy. The correlation extends up to 1200 units in the primary direction (45°), but only 480 units (1200 × 0.4) in the perpendicular direction. There is a small nugget effect (0.05), indicating slight short-scale variation or measurement noise.
+
+## Variogram Maps
+
+Another way to detect directional dependence
+
+```{r}
+vg.map <- variogram(log(zinc)~1, meuse2, map=T, cutoff=1000, width=100)
+plot(vg.map, threshold=5)
+```
+
+
+#### Explanation of the Code: `vg.map <- variogram(log(zinc) ~ 1, meuse, map = TRUE, cutoff = 1000, width = 100)`
+
+
+
+This code computes and visualizes the variogram map of the log-transformed zinc concentrations in the Meuse dataset.
+
+1. This function calculates a directional semivariogram for the spatial data.
+
+- variogram(log(zinc) ~ 1, meuse, ...)
+
+      Computes the experimental semivariogram for log-transformed zinc concentrations. The ~ 1 formula means it calculates the variogram without considering covariates (i.e., only based on spatial distances).
+
+- map = TRUE
+
+    Instead of returning a traditional one-dimensional variogram, this creates a spatial variogram map, which helps identify anisotropy (directional dependence of spatial variation).
+
+- cutoff = 1000
+
+    Defines the maximum lag distance (1,000 meters). Pairs of points separated by distances greater than this are ignored.
+
+- width = 100
+
+    Sets the bin width for grouping distances. Distance intervals of 100 meters are used when computing the variogram.
+
+2. Breakdown of plot(vg.map, threshold = 5)
+This function plots the variogram map.
+
+- plot(vg.map, ...)
+
+    Plots the spatial variogram map, where each pixel represents a directional semivariance value for a given spatial lag.
+
+- threshold = 5
+
+    Sets a threshold to filter high semivariance values to make the plot more interpretable.
+    
+## Model residuals obtain from `log(zinc)~sqrt(dist)`
+
+
+```{r}
+vgreg.est <- variogram(log(zinc)~sqrt(dist), meuse2)
+plot(vgreg.est)
+vgreg.fit <- fit.variogram(vgreg.est, vgm(0.2, "Sph", 800, 0.05))
+vgreg.fit
+plot(vgreg.est, vgreg.fit, cex = 1.5)
+```
+
+```{r}
+vgreg.dir <- variogram(log(zinc)~sqrt(dist), meuse2, alpha=c(0, 45, 90, 135))
+plot(vgreg.dir)
+```
+
+```{r}
+plot(vgreg.dir, vgreg.fit, cex = 1.5)
+```
+
+The directional dependence is much less obvious in this case.
+
+Another way to show this is variogram maps
+
+```{r}
+vgreg.map <- variogram(log(zinc)~sqrt(dist), meuse2, map=T, cutoff=1000, width=100)
+plot(vgreg.map, threshold=5)
+```
+
+## Simple Kriging
+ 
