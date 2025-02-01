@@ -1,0 +1,137 @@
+---
+output: html_document
+toc: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Kriging with meuse
+
+## Data
+
+```{r, warning=FALSE, message=FALSE}
+library(sp)
+library(gstat)
+library(sf)
+library(mapview)
+library(tidyverse)
+```
+
+```{r}
+data(meuse)
+head(meuse)
+ggplot(data = meuse) + geom_point(aes(x, y))
+```
+
+```{r}
+data(meuse.grid)
+head(meuse.grid)
+ggplot(data = meuse.grid) + geom_point(aes(x, y))
+```
+
+
+
+
+
+## Summary Statistics
+
+```{r}
+summary(meuse)
+```
+
+### Bubble plot
+
+```{r}
+ggplot(data = meuse) + geom_point(aes(x, y, size=zinc))
+```
+
+## Spatial Data Wrangling
+
+```{r}
+class(meuse)
+class(meuse.grid)
+```
+
+### Convert the meuse and meuse.grid data frames to sf objects using the st_as_sf()
+
+```{r}
+meuse2 <- st_as_sf(meuse, coords = c("x", "y"), crs = 28992)
+meuse.grid2 <- st_as_sf(meuse.grid, coords = c("x", "y"),
+                       crs = 28992)
+```
+
+### Recheck class type
+
+```{r}
+class(meuse2)
+class(meuse.grid2)
+```
+
+```{r}
+head(meuse2)
+head(meuse.grid2)
+```
+
+### Interactive maps 
+
+```{r}
+mapview(meuse2, zcol = "zinc",  map.types = "CartoDB.Voyager")
+mapview(meuse.grid2,  map.types = "CartoDB.Voyager")
+```
+
+## EDA
+
+```{r}
+ggplot(meuse, aes(x=dist, y=zinc)) + geom_point()
+```
+
+```{r}
+ggplot(meuse, aes(x=dist, y=log(zinc))) + geom_point()
+```
+
+```{r}
+ggplot(meuse, aes(x=sqrt(dist), y=log(zinc))) + geom_point()
+```
+
+### Simple Linear Regression Model
+
+```{r}
+lm <- lm(log(zinc)~sqrt(dist), meuse)
+meuse$residuals <- residuals(lm)
+meuse$fitted <- fitted(lm) 
+meuse$fitted2 <- predict(lm, meuse) 
+meuse$fitted.s <- predict(lm, meuse) - mean(predict(lm, meuse))
+head(meuse)
+```
+
+```{r}
+library(viridis)
+ggplot(meuse, aes(x=x, y=y, col=fitted))+geom_point()+scale_color_viridis()
+ggplot(meuse, aes(x=x, y=y, col=residuals))+geom_point()+scale_color_viridis()
+ggplot(meuse, aes(x=x, y=y, col=fitted.s))+geom_point()+scale_color_viridis()
+```
+
+## Inverse Distance Interpolation
+
+```{r}
+library(stars) |> suppressPackageStartupMessages()
+library(gstat)
+idw_result <- idw(zinc~1, meuse2, meuse.grid2)
+idw_result
+# Convert IDW output to a data frame
+idw_df <- as.data.frame(idw_result)
+head(idw_df)
+colnames(idw_df) <- c("x", "y", "zinc_pred")
+head(idw_df)
+
+```
+
+### Visualize IDW values
+
+```{r}
+ggplot(data = meuse2) + geom_sf(data = idw_result, aes(color = var1.pred)) +
+  geom_sf() +
+  scale_color_viridis() + theme_bw()
+```

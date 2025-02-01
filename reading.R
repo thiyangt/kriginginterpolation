@@ -1,0 +1,1 @@
+https://www.paulamoraga.com/book-spatial/kriging.html
