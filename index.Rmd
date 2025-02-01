@@ -7,7 +7,7 @@ toc: true
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-# Kriging with meuse
+# Spatial Interpolation: meuse
 
 ## Data
 
@@ -134,4 +134,102 @@ head(idw_df)
 ggplot(data = meuse2) + geom_sf(data = idw_result, aes(color = var1.pred)) +
   geom_sf() +
   scale_color_viridis() + theme_bw()
+```
+
+## Spatial Kriging
+
+### Lagged Scatter plots
+
+```{r}
+hscat(log(zinc)~1, meuse2, (0:9)*100)
+```
+
+### Variogram Cloud
+
+```{r}
+vc <- variogram(log(zinc) ~ 1, meuse2, cloud = TRUE)
+plot(vc)
+```
+
+### Binned Variogram/ Sample Variogram
+
+```{r}
+v <- variogram(log(zinc) ~ 1, data = meuse2)
+plot(v)
+```
+
+### List of available models for variograms
+
+```{r}
+vgm()
+show.vgms(par.strip.text = list(cex = 0.75))
+```
+
+### Fitting Variogram Models
+
+### Trial 1
+
+#### Assess our initial model
+
+```{r}
+vg.fit1 <- vgm(psill = 0.5, model = "Sph",
+                range = 900, nugget = 0.1)
+vg.fit1 
+plot(v, vg.fit1 , cutoff = 1000, cex = 1.5)
+```
+
+### Fit a variogram providing the sample variogram
+
+```{r}
+fv <- fit.variogram(object = v,
+                    model = vgm(psill = 0.5, model = "Sph",
+                                range = 900, nugget = 0.1))
+fv
+attr(fv, "SSErr")
+plot(v, fv, cex = 1.5)
+```
+
+### Trial 2
+
+
+```{r}
+fv2 <- fit.variogram(object = v,
+                    model = vgm(psill = 0.6, model = "Sph",range = 900, nugget = 0.1))
+fv2
+attr(fv2, "SSErr")
+plot(v, fv2, cex = 1.5)
+```
+
+### Trial 3
+
+
+```{r}
+fv3 <- fit.variogram(object = v,
+                    model = vgm(psill = 1, model = "Exp",range = 800, nugget = 0.1))
+fv3
+attr(fv3, "SSErr")
+plot(v, fv3, cex = 1.5)
+```
+
+#### If the process is isotropic we can directly go for kriging
+
+```{r}
+library(ggplot2)
+library(viridis)
+
+k <- gstat(formula = log(zinc) ~ 1, data = meuse2, model = fv)
+kpred <- predict(k, meuse.grid2)
+head(kpred)
+```
+
+#### Visualisation of Predictions
+
+```{r}
+ggplot() + geom_sf(data = kpred, aes(color = var1.pred)) +
+  geom_sf(data = meuse2) +
+  scale_color_viridis(name = "log(zinc)") + theme_bw()
+
+ggplot() + geom_sf(data = kpred, aes(color = var1.var)) +
+  geom_sf(data = meuse2) +
+  scale_color_viridis(name = "variance") + theme_bw()
 ```
