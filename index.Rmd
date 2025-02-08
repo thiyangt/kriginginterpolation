@@ -351,5 +351,218 @@ vgreg.map <- variogram(log(zinc)~sqrt(dist), meuse2, map=T, cutoff=1000, width=1
 plot(vgreg.map, threshold=5)
 ```
 
-## Simple Kriging
+## Simple Kriging: Without Handling Anisotropy
+
+Note: This is an illustration of the codes. In the current implementation, anisotropy is ignored, meaning the model assumes the spatial correlation is the same in all directions. If anisotropy exists (i.e., the spatial dependence varies by direction), we need to incorporate it explicitly in the variogram model.
+
+1. Compute Variograms & Fit Models
+
+```{r}
+zinc_mean <- mean(log(meuse$zinc)) # Required for SK
+v_sk_est <- variogram(log(zinc) ~ 1, meuse2, cloud=F)
+v_sk_est
+plot(v_sk_est, main="Sample Variogram")
+v_sk_fit <- fit.variogram(v_sk_est, model = vgm(1, "Sph", 900, 0.1))
+v_sk_fit
+plot(v_sk_est, v_sk_fit)
+attr(v_sk_fit, "SSErr")
+```
  
+2. Perform Kriging Interpolation
+
+```{r}
+krige_sk <- krige(log(zinc) ~ 1, meuse2, meuse.grid2, model = v_sk_fit, beta = zinc_mean)
+head(krige_sk)
+```
+
+3. Visualize the Kriging Results
+
+```{r}
+ggplot(data = meuse2) + geom_sf(data = krige_sk, aes(color = var1.pred)) +
+  geom_sf() +
+  scale_color_viridis() + theme_bw()
+ggplot(data = meuse2) + geom_sf(data = krige_sk, aes(color = var1.var)) +
+  geom_sf() +
+  scale_color_viridis() + theme_bw()
+```
+
+## Ordinary Kriging: Without Handling Anisotropy
+
+
+
+1. Compute Variograms & Fit Models
+
+```{r}
+v_ok <- variogram(log(zinc) ~ 1, meuse2)
+v_ok_fit <- fit.variogram(v_ok, model = vgm(1, "Sph", 900, 0.1))
+```
+ 
+2. Perform Kriging Interpolation
+
+```{r}
+krige_ok <- krige(log(zinc) ~ 1, meuse2, meuse.grid2, model = v_ok_fit)
+head(krige_ok)
+```
+
+3. Visualize the Kriging Results
+
+```{r}
+ggplot(data = meuse2) + geom_sf(data = krige_ok, aes(color = var1.pred)) +
+  geom_sf() +
+  scale_color_viridis() + theme_bw()
+ggplot(data = meuse2) + geom_sf(data = krige_ok, aes(color = var1.var)) +
+  geom_sf() +
+  scale_color_viridis() + theme_bw()
+```
+
+## Universal Kriging
+
+
+
+1. Compute Variograms & Fit Models
+
+```{r}
+v_uk <- variogram(log(zinc) ~ sqrt(dist), meuse2)
+v_uk_fit <- fit.variogram(v_uk, model = vgm(1, "Sph", 900, 0.1))
+```
+ 
+2. Perform Kriging Interpolation
+
+```{r}
+krige_uk <- krige(log(zinc) ~ sqrt(dist), meuse2, meuse.grid2, model = v_uk_fit)
+head(krige_uk)
+```
+
+3. Visualize the Kriging Results
+
+```{r}
+ggplot(data = meuse2) + geom_sf(data = krige_uk, aes(color = var1.pred)) +
+  geom_sf() +
+  scale_color_viridis() + theme_bw()
+ggplot(data = meuse2) + geom_sf(data = krige_uk, aes(color = var1.var)) +
+  geom_sf() +
+  scale_color_viridis() + theme_bw()
+```
+
+# Simple Kriging: Handling Anisotropy
+
+## 1. Step 1: Compute Directional Variograms
+
+```{r}
+library(gstat)
+
+# Compute directional variogram with different angles (0, 45, 90, 135 degrees)
+v_aniso <- variogram(log(zinc) ~ 1, meuse2, alpha = c(0, 45, 90, 135))
+
+# Plot the directional variograms
+plot(v_aniso)
+
+```
+
+
+## 2.  Fit Anisotropic Variogram Model
+
+- psill = 0.59:
+
+The partial sill or psill represents the variance of the data (the overall range of spatial variation). In this case, it indicates that the variance of the spatial process is 0.59 after subtracting the nugget (if any).
+
+- model = "Sph":
+
+This specifies the model of spatial correlation. "Sph" stands for the spherical model of variograms, which assumes the correlation increases with distance until it reaches a maximum (the range), after which it flattens out.
+Other models include "Exp" (exponential) and "Gau" (Gaussian), each representing different types of spatial correlation decay.
+
+- range = 1200:
+
+The range refers to the distance at which the spatial correlation becomes negligible (i.e., it reaches its sill). After this distance, there is no longer a significant correlation between points.
+Here, the range is set to 1200 units, meaning that beyond 1200 units, the spatial dependence is assumed to be zero.
+
+- nugget = 0.05:
+
+The nugget represents the variance at very small distances, or the "micro-scale" variability that isn't captured by the spatial model. This is usually attributed to measurement errors or small-scale unmodeled variation.
+
+In this case, the nugget is 0.05, meaning there's a small amount of unexplained variability at the smallest distances.
+anis = c(45, 0.4):
+
+This specifies the anisotropy in the variogram model:
+
+45: The angle in degrees that defines the major axis of the anisotropy. This means the range in this direction (45°) is different from the range in the perpendicular direction (90°).
+
+0.4: The anisotropy ratio (major range / minor range). This means the range in the major direction (45°) is 0.4 times the range in the minor direction (perpendicular to 45°).
+In other words, the spatial correlation is stronger in the direction of the major axis (45°) and weaker in the perpendicular direction.
+
+- Summary:
+
+Partial Sill (0.59): The variance of the spatial process after accounting for the nugget.
+Spherical Model ("Sph"): Specifies the type of spatial correlation model used.
+Range (1200): The distance at which spatial correlation becomes negligible.
+Nugget (0.05): The small-scale variability (or measurement error) at very short distances.
+Anisotropy: A directional dependence in the spatial correlation:
+45° direction has a range of 1200 units.
+The minor range (perpendicular to 45°) is 1200 / 0.4 = 3000 units.
+
+```{r}
+# Fit anisotropic variogram model with a specified range and anisotropy ratio
+fit.ani <- vgm(psill=0.59, model = "Sph", range = 1200, nugget = 0.05, anis = c(45, 0.4))
+plot(vg.dir, fit.ani)
+v_aniso_fit <- fit.variogram(v_aniso, 
+                              model = fit.ani)
+v_aniso_fit
+attr(v_aniso_fit, "SSErr")
+```
+
+## 3. Kriging interpolation
+
+```{r}
+krige_aniso_sk <- krige(log(zinc) ~ 1, meuse2, meuse.grid2, model = v_aniso_fit, beta = mean(log(meuse$zinc)))
+ggplot(data = meuse2) + geom_sf(data = krige_aniso_sk, aes(color = var1.pred)) +
+  geom_sf() +
+  scale_color_viridis() + theme_bw()
+ggplot(data = meuse2) + geom_sf(data = krige_aniso_sk, aes(color = var1.var)) +
+  geom_sf() +
+  scale_color_viridis() + theme_bw()
+```
+
+# Cross validation Residuals
+
+1. Split data into traing and test
+
+```{r}
+set.seed(42)  # For reproducibility
+
+# Sample indices for training set (70% of the data)
+train_indices <- sample(1:nrow(meuse2), size = 0.7 * nrow(meuse2))
+
+# Create training set and test set
+train_data <- meuse2[train_indices, ]
+test_data <- meuse2[-train_indices, ]
+
+# Check the first few rows of both sets
+head(train_data)
+head(test_data)
+
+```
+
+2. Fit the model using the training data
+
+```{r}
+v_uk <- variogram(log(zinc) ~ sqrt(dist), train_data )
+v_uk_fit <- fit.variogram(v_uk, model = vgm(1, "Sph", 900, 0.1))
+krige_uk <- krige(log(zinc) ~ sqrt(dist), train_data, test_data, model = v_uk_fit)
+head(krige_uk)
+```
+
+3. Actual vs predicted
+
+```{r}
+actual <- log(test_data$zinc)
+predicted <- log(krige_uk$var1.pred)
+dfuk <- data.frame(actual, predicted)
+ggplot(dfuk, aes(x=actual, y=predicted)) + geom_point()
+```
+
+4. Histogram of residuals
+
+```{r}
+dfuk$resid <- dfuk$actual - dfuk$predicted
+ggplot(dfuk, aes(x=resid)) + geom_histogram(col="white")
+```
